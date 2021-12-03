@@ -110,15 +110,17 @@ int main(int argc, char **argv) {
         gettimeofday(&tp, NULL);
         VLOG(DEBUG, "%lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
 
+        sndpkt = make_packet(0);
+        sndpkt->hdr.seqno = lastack;
         if (lastack == recvpkt->hdr.seqno)
         {
             fseek(fp, recvpkt->hdr.seqno, SEEK_SET);
             fwrite(recvpkt->data, 1, recvpkt->hdr.data_size, fp);
             lastack = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
         }
-        sndpkt = make_packet(0);
         sndpkt->hdr.ackno = lastack;
         sndpkt->hdr.ctr_flags = ACK;
+        printf("%s: %d\n", "sent the following ACK", lastack);
         if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0,
                 (struct sockaddr *) &clientaddr, clientlen) < 0)
         {
