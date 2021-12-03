@@ -26,6 +26,13 @@ int len = 0;
 
 int rsize = 0;
 
+int lastsend = -1;
+int lastav;
+int dupe = 0;
+int ssthresh = 64;
+int ss = 1;
+int cc = 0;
+
 int sockfd, serverlen;
 struct sockaddr_in serveraddr;
 struct itimerval timer;
@@ -52,11 +59,11 @@ int send_packets(int curr, int last)
             }
         }
     long next;
-    if(last > rsize)
-      last = rsize;
+    if(last >= rsize)
+      last = rsize+1;
     int rcurr = curr;
     curr = curr*DATA_SIZE;
-    while(rcurr <= last)
+    while(rcurr < last)
     {
         fseek(fp, curr, SEEK_SET);
         len = fread(buffer, 1, DATA_SIZE, fp);
@@ -96,12 +103,18 @@ int send_packets(int curr, int last)
 
 void resend_packets(int sig)
 {
+    ssthresh = (window_size/2)>2?(window_size/2):2;
+    ss = 1;
+    window_size = 1;
     if (sig == SIGALRM)
     {
-        //Resend all packets range between
-        //sendBase and nextSeqNum
-        send_packets(rsend, next_seqno);
+        send_packets(rsend, rsend+window_size);
         VLOG(INFO, "Timout happend");
+    }
+    else
+    {
+        send_packets(rsend, rsend+window_size);
+        VLOG(INFO, "3 dupe ACKs");
     }
 }
 
@@ -159,7 +172,7 @@ int main (int argc, char **argv)
     if (sockfd < 0)
         error("ERROR opening socket");
 
-
+    lastav = window_size;
     /* initialize server server details */
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serverlen = sizeof(serveraddr);
@@ -196,24 +209,29 @@ int main (int argc, char **argv)
         if(send_base <= recvpkt->hdr.seqno) // if new ACK
         {
             stop_timer();
+            if(!ss)
+                cc += 1/window_size;
+            else if(window_size>ssthresh)
+                ss = 0;
+            if(ss || cc>=1)
+                window_size++;
         }
         if(!looper && recvpkt->hdr.ackno < size)
         {
             looper = 1;
         }
+        if(send_base == recvpkt->hdr.ackno)
+            dupe++;
+        else
+            dupe = 0;
+        printf("dupes: %d\n", dupe);
+        if(dupe >= 3)
+        {
+            resend_packets(0);
+        }
         send_base = recvpkt->hdr.ackno;
         rsend = send_base/DATA_SIZE;
-        if(send_base>next_seqno*DATA_SIZE)
-        {
-            sndpkt = make_packet(0);
-            sndpkt->hdr.data_size = 0;
-            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0,
-                        ( const struct sockaddr *)&serveraddr, serverlen) < 0)
-            {
-                error("sendto");
-            }
-            return 0;
-        }
+        lastav = rsend + window_size;
     }
     return 0;
 }

@@ -100,6 +100,7 @@ int main(int argc, char **argv) {
         assert(get_data_size(recvpkt) <= DATA_SIZE);
         if ( recvpkt->hdr.data_size == 0)
         {
+            printf("ENDED!\n");
             //VLOG(INFO, "End Of File has been reached");
             fclose(fp);
             break;
@@ -112,10 +113,10 @@ int main(int argc, char **argv) {
 
         sndpkt = make_packet(0);
         sndpkt->hdr.seqno = lastack;
+        fseek(fp, recvpkt->hdr.seqno, SEEK_SET);
+        fwrite(recvpkt->data, 1, recvpkt->hdr.data_size, fp);
         if (lastack == recvpkt->hdr.seqno)
         {
-            fseek(fp, recvpkt->hdr.seqno, SEEK_SET);
-            fwrite(recvpkt->data, 1, recvpkt->hdr.data_size, fp);
             lastack = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
         }
         sndpkt->hdr.ackno = lastack;
