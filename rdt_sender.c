@@ -42,13 +42,21 @@ FILE *fp;
 int send_packets(int curr, int last)
 {
     if(curr > rsize)
-        return curr;
+        {
+            sndpkt = make_packet(0);
+            sndpkt->hdr.data_size = 0;
+            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0,
+                        ( const struct sockaddr *)&serveraddr, serverlen) < 0)
+            {
+                error("sendto");
+            }
+        }
     long next;
     if(last > rsize)
       last = rsize;
     int rcurr = curr;
     curr = curr*DATA_SIZE;
-    while(rcurr < last)
+    while(rcurr <= last)
     {
         fseek(fp, curr, SEEK_SET);
         len = fread(buffer, 1, DATA_SIZE, fp);
@@ -196,7 +204,16 @@ int main (int argc, char **argv)
         send_base = recvpkt->hdr.ackno;
         rsend = send_base/DATA_SIZE;
         if(send_base>next_seqno*DATA_SIZE)
+        {
+            sndpkt = make_packet(0);
+            sndpkt->hdr.data_size = 0;
+            if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0,
+                        ( const struct sockaddr *)&serveraddr, serverlen) < 0)
+            {
+                error("sendto");
+            }
             return 0;
+        }
     }
     return 0;
 }
