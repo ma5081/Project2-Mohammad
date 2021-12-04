@@ -129,12 +129,15 @@ int main(int argc, char **argv) {
         }
         recvpkt = (tcp_packet *) buffer;
         assert(get_data_size(recvpkt) <= DATA_SIZE);
+        gettimeofday(&tp, NULL);
+        VLOG(DEBUG, "%lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
         sndpkt = make_packet(0);
         if ((recvpkt->hdr.data_size == 0 && recvpkt->hdr.seqno >= 0)||rsize<=0)
         {
             int ender = 0;
             for (int i = 0; i < rsize; i++)
             {
+                //printf("ender %ld: %d\n", i*DATA_SIZE, *(buffered+i));
                 if(!*(buffered+i)){ender = i; break;}
             }
             if(rsize<=0)
@@ -163,9 +166,6 @@ int main(int argc, char **argv) {
         }
         else
         {
-            gettimeofday(&tp, NULL);
-            VLOG(DEBUG, "%lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
-
             fseek(fp, recvpkt->hdr.seqno, SEEK_SET);
             fwrite(recvpkt->data, 1, recvpkt->hdr.data_size, fp);
             int rpack = recvpkt->hdr.seqno/DATA_SIZE;
@@ -173,7 +173,12 @@ int main(int argc, char **argv) {
             *(buffered+rpack) = 1;
             if (lastack == recvpkt->hdr.seqno)
             {
-                lastack = recvpkt->hdr.seqno + recvpkt->hdr.data_size;
+                for(int i=rpack; i<rsize; i++)
+                {
+                    if(!*(buffered+i)){rpack = i; break;}
+                    rpack = rsize; // set to rsize unless breaking the loop with the if statement
+                }
+                lastack = rpack*DATA_SIZE;
             }
         }
         sndpkt->hdr.ackno = lastack;

@@ -20,7 +20,7 @@
 int lastsend=-1;
 int rsend = 0;
 long send_base=0;
-int window_size = 10;
+int window_size = 1;
 int looper = 1;
 int len = 0;
 
@@ -44,9 +44,11 @@ FILE *fp;
 
 
 
-void end_packets()
+void end_packets() // close connection
 {
+    looper = 0;
     sndpkt = make_packet(0);
+    VLOG(INFO, "End Of File has been reached");
     sndpkt->hdr.data_size = 0;
     if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0,
                 ( const struct sockaddr *)&serveraddr, serverlen) < 0)
@@ -56,11 +58,13 @@ void end_packets()
 }
 int send_packets(int curr, int last)
 {
-    if(curr > rsize)
+    if(curr > rsize) // if you got to the end of the file
     {
         end_packets();
     }
-    if(curr<0)
+    if(curr>=last) // skip if out of sync, to receive
+        return curr;
+    if(curr<0) // handshake to send info about the file
     {
         sndpkt = make_packet(0);
         sndpkt->hdr.seqno = -1;
@@ -75,25 +79,22 @@ int send_packets(int curr, int last)
         rsend = -1;
         return 0;
     }
-    else
+    else // if sending
     {
         long next;
-        if(last >= rsize)
-          last = rsize+1;
+        if(last >= rsize) // if the last one to be sent is past the final one, send them all and set it to last packet
+            last = rsize;
         int rcurr = curr;
         curr = curr*DATA_SIZE;
         while(rcurr < last)
         {
             fseek(fp, curr, SEEK_SET);
             len = fread(buffer, 1, DATA_SIZE, fp);
-            printf("%d\n", curr);
             if (len <= 0)
             {
-                VLOG(INFO, "End Of File has been reached");
-                sndpkt = make_packet(0);
-                sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0,
-                        (const struct sockaddr *)&serveraddr, serverlen);
-                looper = 0;
+                // sndpkt = make_packet(0);
+                // sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0,
+                //         (const struct sockaddr *)&serveraddr, serverlen);
                 return rcurr;
             }
             next = curr + len;
@@ -126,14 +127,15 @@ void resend_packets(int sig)
     ssthresh = (window_size/2)>2?(window_size/2):2;
     ss = 1;
     window_size = 1;
+    lastav = rsend+window_size;
     if (sig == SIGALRM)
     {
-        send_packets(rsend, rsend+window_size);
+        send_packets(rsend, lastav);
         VLOG(INFO, "Timout happend");
     }
     else
     {
-        send_packets(rsend, rsend+window_size);
+        send_packets(rsend, lastav);
         VLOG(INFO, "3 dupe ACKs");
     }
 }
@@ -232,35 +234,37 @@ int main (int argc, char **argv)
         {
             stop_timer();
             if(!ss)
-                cc += 1/window_size;
+            {
+                cc++;
+            }
             else if(window_size>ssthresh)
                 ss = 0;
-            if(ss || cc>=1)
+            if(ss || cc>=window_size)
+            {
                 window_size++;
-        }
-        if(!looper && recvpkt->hdr.ackno < size)
-        {
-            looper = 1;
+                cc = 0;
+            }
         }
         if(send_base == recvpkt->hdr.ackno)
             dupe++;
         else
             dupe = 0;
-        printf("dupes: %d\n", dupe);
+        send_base = recvpkt->hdr.ackno;
+        rsend = send_base/DATA_SIZE;
+        lastav = rsend + window_size;
         if(dupe >= 3)
         {
             resend_packets(0);
         }
-        send_base = recvpkt->hdr.ackno;
-        rsend = send_base/DATA_SIZE;
-        lastav = rsend + window_size;
-        if(!rsize && !rsend)
+        if(rsend > lastsend) lastsend = rsend;
+        printf("ACKd %d/%d\n", rsend, rsize);
+        if((!rsize && !rsend) || rsend >= rsize)
         {
             end_packets();
-            looper = 0;
             return 0;
         }
-
+        if(!looper)
+            return 0;
     }
     return 0;
 }
