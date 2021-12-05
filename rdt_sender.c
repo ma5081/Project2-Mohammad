@@ -18,7 +18,7 @@
 #define RETRY  120 //milli second
 
 int lastsend=-1;
-int rsend = 0;
+int rsend = 0; // anything with r____ is the packet-count version
 long send_base=0;
 int window_size = 1;
 int looper = 1;
@@ -63,8 +63,10 @@ void end_packets() // close connection
     {
         error("sendto");
     }
+    fclose(fp);
     fclose(csv);
 }
+
 int send_packets(int curr, int last)
 {
     if(curr > rsize) // if you got to the end of the file
@@ -94,17 +96,14 @@ int send_packets(int curr, int last)
         if(last >= rsize) // if the last one to be sent is past the final one, send them all and set it to last packet
             last = rsize;
         int rcurr = curr;
-        curr = curr*DATA_SIZE;
+        curr = curr*DATA_SIZE; // turning curr to byte version
         while(rcurr < last)
         {
             fseek(fp, curr, SEEK_SET);
             len = fread(buffer, 1, DATA_SIZE, fp);
             if (len <= 0)
             {
-                // sndpkt = make_packet(0);
-                // sendto(sockfd, sndpkt, TCP_HDR_SIZE,  0,
-                //         (const struct sockaddr *)&serveraddr, serverlen);
-                return rcurr;
+                return rcurr; // not ending connection in case the receiver did not receive all packets
             }
             next = curr + len;
             sndpkt = make_packet(len);
@@ -126,7 +125,7 @@ int send_packets(int curr, int last)
             free(sndpkt);
             rcurr++;
         }
-        int rnext = next/DATA_SIZE;
+        int rnext = next/DATA_SIZE; // create a packet version to be assigned outside
         return rnext;
     }
 }
@@ -134,17 +133,17 @@ int send_packets(int curr, int last)
 void resend_packets(int sig)
 {
     csvTime(); // right before change
-    if (sig == SIGALRM)
+    if (sig == SIGALRM) // timeout
     {
-        ssthresh = (window_size/2)>2?(window_size/2):2;
+        ssthresh = (window_size/2)>2?(window_size/2):2; // fast retransmit w/o fast recovery for timeout
         ss = 1;
         window_size = 1;
         lastav = rsend+window_size;
         csvTime();
         send_packets(rsend, lastav);
-        VLOG(INFO, "Timout happend");
+        VLOG(INFO, "Timeout happened"); 
     }
-    else
+    else // non-timeout = 3 dupe ACKs
     {
         window_size /= 2; // fast recovery
         lastav = rsend+window_size;
@@ -229,17 +228,17 @@ int main (int argc, char **argv)
 
     assert(MSS_SIZE - TCP_HDR_SIZE > 0);
 
-    // Go Back N protocol
     init_timer(RETRY, resend_packets);
 
     csvTime();
 
+    // TCP protocol
     while (looper)
     {
-        lastsend = send_packets(lastsend, lastav);
+        lastsend = send_packets(lastsend, lastav); // send the next packet to last available
         start_timer();
-        //ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
-        //struct sockaddr *src_addr, socklen_t *addrlen);
+
+        // receive ACK
         if(recvfrom(sockfd, buffer, MSS_SIZE, 0,
                     (struct sockaddr *) &serveraddr, (socklen_t *)&serverlen) < 0)
         {
@@ -264,27 +263,30 @@ int main (int argc, char **argv)
                 cc = 0;
             }
         }
-        if(send_base == recvpkt->hdr.ackno)
+        if(send_base == recvpkt->hdr.ackno) // if dupe ACK
             dupe++;
         else
             dupe = 0;
         send_base = recvpkt->hdr.ackno;
         rsend = send_base/DATA_SIZE;
         lastav = rsend + window_size;
-        if(dupe >= 3)
+        if(dupe >= 3) // if 3 dupe ACKs
         {
             dupe = 0;
             resend_packets(0);
         }
-        if(rsend > lastsend) lastsend = rsend;
+        if(rsend > lastsend) lastsend = rsend; // if the send base bypasses the next packet to be sent, update the lastsend
         printf("ACKd %d/%d\n", rsend, rsize);
-        if((!rsize && !rsend) || rsend >= rsize)
+        if((!rsize && !rsend) || rsend >= rsize) // if the EOF is reached, end the connection
         {
             end_packets();
             return 0;
         }
-        if(!looper)
+        if(!looper) // safety net
+        {
+            end_packets();
             return 0;
+        }
     }
     return 0;
 }

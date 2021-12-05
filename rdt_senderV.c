@@ -139,12 +139,12 @@ void resend_packets(int sig)
     window_size = 1;
     lastav = rsend+window_size;
     csvTime();
-    if (sig == SIGALRM)
+    if (sig == SIGALRM) // timeout
     {
         send_packets(rsend, lastav);
         VLOG(INFO, "Timout happend");
     }
-    else
+    else // non-timeout = 3 dupes
     {
         send_packets(rsend, rsend+1);
         VLOG(INFO, "3 dupe ACKs");

@@ -21,8 +21,9 @@
  */
 tcp_packet *recvpkt;
 tcp_packet *sndpkt;
-int rsize=0;
-short* buffered;
+int rsize=0; // amount of packets to get
+short* buffered; // an array-type system of bools to check the packets that are buffered
+
 int main(int argc, char **argv) {
     int sockfd; /* socket */
     int portno; /* port to listen on */
@@ -61,6 +62,7 @@ int main(int argc, char **argv) {
      * otherwise we have to wait about 20 secs.
      * Eliminates "ERROR on binding: Address already in use" error.
      */
+
     optval = 1;
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
             (const void *)&optval , sizeof(int));
@@ -87,6 +89,7 @@ int main(int argc, char **argv) {
 
     clientlen = sizeof(clientaddr);
 
+    // Handshake with other side
     if (recvfrom(sockfd, buffer, MSS_SIZE, 0,
             (struct sockaddr *) &clientaddr, (socklen_t *)&clientlen) < 0)
     {
@@ -97,17 +100,17 @@ int main(int argc, char **argv) {
     rsize = recvpkt->hdr.ackno;
     if(rsize)
     {
-        buffered = calloc(rsize,sizeof(short));
+        buffered = calloc(rsize,sizeof(short)); // dynamic array
     }
     else
     {
-        buffered = malloc(0);
+        buffered = malloc(0); // setting buffered to bypass errors
     }
 
     printf("%s: %d\n", "Packets Needed", rsize);
 
     sndpkt = make_packet(0);
-    sndpkt->hdr.ackno = 0;
+    sndpkt->hdr.ackno = 0; // initialize the file transfer
     sndpkt->hdr.ctr_flags = ACK;
     printf("%s: %d\n", "sent the following ACK", lastack);
     if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0,
@@ -132,16 +135,16 @@ int main(int argc, char **argv) {
         gettimeofday(&tp, NULL);
         VLOG(DEBUG, "%lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
         sndpkt = make_packet(0);
-        if ((recvpkt->hdr.data_size == 0 && recvpkt->hdr.seqno >= 0)||rsize<=0)
+        if ((recvpkt->hdr.data_size == 0 && recvpkt->hdr.seqno >= 0)||rsize<=0) // if received packet is empty and it is not the handshake or if the file to be received is empty
         {
             int ender = 0;
-            for (int i = 0; i < rsize; i++)
+            for (int i = 0; i < rsize; i++) // check all the packets to make sure they are all received
             {
-                //printf("ender %ld: %d\n", i*DATA_SIZE, *(buffered+i));
                 if(!*(buffered+i)){ender = i; break;}
             }
-            if(rsize<=0)
+            if(rsize<=0) // if the file is empty
             {
+                // end connection and sends ACK to the other side
                 sndpkt->hdr.ackno = 0;
                 sndpkt->hdr.ctr_flags = ACK;
                 printf("%s: %d\n", "sent the following ACK", lastack);
@@ -158,9 +161,9 @@ int main(int argc, char **argv) {
                 fclose(fp);
                 break;
             }
-            lastack = ender*DATA_SIZE;
+            lastack = ender*DATA_SIZE; // after checking all the packets, sends an ACK for the missing packet (safety net and to account for large window sizes)
         }
-        else if(recvpkt->hdr.seqno < 0)
+        else if(recvpkt->hdr.seqno < 0) // if there was a retransmit of the handshake
         {
             lastack = 0;
         }
@@ -170,10 +173,10 @@ int main(int argc, char **argv) {
             fwrite(recvpkt->data, 1, recvpkt->hdr.data_size, fp);
             int rpack = recvpkt->hdr.seqno/DATA_SIZE;
             sndpkt->hdr.seqno = recvpkt->hdr.seqno;
-            *(buffered+rpack) = 1;
-            if (lastack == recvpkt->hdr.seqno)
+            *(buffered+rpack) = 1; // set the packet as buffered
+            if (lastack == recvpkt->hdr.seqno) // if the packet is the packet that was expected
             {
-                for(int i=rpack; i<rsize; i++)
+                for(int i=rpack; i<rsize; i++) // check the next missing piece
                 {
                     if(!*(buffered+i)){rpack = i; break;}
                     rpack = rsize; // set to rsize unless breaking the loop with the if statement
