@@ -32,6 +32,7 @@ int ssthresh = 64;
 int ss = 1;
 int cc = 0;
 
+struct timeval tp;
 int sockfd, serverlen;
 struct sockaddr_in serveraddr;
 struct itimerval timer;
@@ -41,8 +42,15 @@ sigset_t sigmask;
 
 char buffer[DATA_SIZE];
 FILE *fp;
+FILE *csv;
 
 
+void csvTime()
+{
+  gettimeofday(&tp, NULL);
+  long long t = tp.tv_sec*1000LL+(tp.tv_usec/1000.0);
+  fprintf(csv, "%llu, %d\n", t, window_size);
+}
 
 void end_packets() // close connection
 {
@@ -55,6 +63,7 @@ void end_packets() // close connection
     {
         error("sendto");
     }
+    fclose(csv);
 }
 int send_packets(int curr, int last)
 {
@@ -124,18 +133,23 @@ int send_packets(int curr, int last)
 
 void resend_packets(int sig)
 {
-    ssthresh = (window_size/2)>2?(window_size/2):2;
-    ss = 1;
-    window_size = 1;
-    lastav = rsend+window_size;
+    csvTime(); // right before change
     if (sig == SIGALRM)
     {
+        ssthresh = (window_size/2)>2?(window_size/2):2;
+        ss = 1;
+        window_size = 1;
+        lastav = rsend+window_size;
+        csvTime();
         send_packets(rsend, lastav);
         VLOG(INFO, "Timout happend");
     }
     else
     {
-        send_packets(rsend, lastav);
+        window_size /= 2; // fast recovery
+        lastav = rsend+window_size;
+        csvTime();
+        send_packets(rsend, rsend+1);
         VLOG(INFO, "3 dupe ACKs");
     }
 }
@@ -186,6 +200,10 @@ int main (int argc, char **argv)
     if (fp == NULL) {
         error(argv[3]);
     }
+    csv = fopen("CWND.csv","w");
+    if (csv == NULL) {
+        error("CWND.csv");
+    }
     fseek(fp, 0L, SEEK_END);
     long size = ftell(fp); // check full size of the FILE
     rsize = (size + DATA_SIZE - 1) / DATA_SIZE; //size adjusted to DATA_SIZE chunks
@@ -214,7 +232,7 @@ int main (int argc, char **argv)
     // Go Back N protocol
     init_timer(RETRY, resend_packets);
 
-
+    csvTime();
 
     while (looper)
     {
@@ -242,6 +260,7 @@ int main (int argc, char **argv)
             if(ss || cc>=window_size)
             {
                 window_size++;
+                csvTime();
                 cc = 0;
             }
         }
@@ -254,6 +273,7 @@ int main (int argc, char **argv)
         lastav = rsend + window_size;
         if(dupe >= 3)
         {
+            dupe = 0;
             resend_packets(0);
         }
         if(rsend > lastsend) lastsend = rsend;
