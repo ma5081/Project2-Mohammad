@@ -32,16 +32,16 @@
 * Appended the **CWND.csv** file whenever the window was about to change and after it changes
 * On the receiver, appended a CSV file with the (time, packet size, packet received) whenever a packet was received into **TPT.csv**
 * using the **plot.py**, use
+    * **\<DIR>** is the name of the Directory, use . or .. for current and the parent Directory respectively
+    * **\<TRACE>** is the name of the trace file
 ```
 python3 plot.py -d <DIR> -n TPT.csv -tr <TRACE>
 ```
-    * **\<DIR>** is the name of the Directory, use . or .. for current and the parent Directory respectively
-    * **\<TRACE>** is the name of the trace file
 * using the **plotW.py**, use
+    * **\<DIR>** is the name of the Directory, use . or .. for current and the parent Directory respectively
 ```
 python3 plotW.py -d <DIR> -n CWND.csv
 ```
-    * **\<DIR>** is the name of the Directory, use . or .. for current and the parent Directory respectively
 
 
 ## Using the code
