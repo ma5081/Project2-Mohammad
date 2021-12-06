@@ -19,10 +19,19 @@
  * In the currenlt implemenetation window size is one, hence we have
  * onlyt one send and receive packet
  */
+struct timeval tp;
 tcp_packet *recvpkt;
 tcp_packet *sndpkt;
 int rsize=0; // amount of packets to get
 short* buffered; // an array-type system of bools to check the packets that are buffered
+FILE *csv;
+
+void csvTime(int dSize, int sNo)
+{
+    gettimeofday(&tp, NULL);
+    VLOG(DEBUG, "%lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
+    fprintf(csv, "%lu, %d, %d\n", tp.tv_sec, dSize, sNo);
+}
 
 int main(int argc, char **argv) {
     int sockfd; /* socket */
@@ -33,7 +42,6 @@ int main(int argc, char **argv) {
     int optval; /* flag value for setsockopt */
     FILE *fp;
     char buffer[MSS_SIZE];
-    struct timeval tp;
     int lastack = 0;
 
     /*
@@ -49,7 +57,10 @@ int main(int argc, char **argv) {
     if (fp == NULL) {
         error(argv[2]);
     }
-
+    csv = fopen("TPT.csv", "w");
+    if (csv == NULL) {
+        error("TPT.csv");
+    }
     /*
      * socket: create the parent socket
      */
@@ -132,8 +143,7 @@ int main(int argc, char **argv) {
         }
         recvpkt = (tcp_packet *) buffer;
         assert(get_data_size(recvpkt) <= DATA_SIZE);
-        gettimeofday(&tp, NULL);
-        VLOG(DEBUG, "%lu, %d, %d", tp.tv_sec, recvpkt->hdr.data_size, recvpkt->hdr.seqno);
+        csvTime(recvpkt->hdr.data_size,recvpkt->hdr.seqno);
         sndpkt = make_packet(0);
         if ((recvpkt->hdr.data_size == 0 && recvpkt->hdr.seqno >= 0)||rsize<=0) // if received packet is empty and it is not the handshake or if the file to be received is empty
         {
@@ -159,6 +169,7 @@ int main(int argc, char **argv) {
                 printf("ENDED!\n");
                 //VLOG(INFO, "End Of File has been reached");
                 fclose(fp);
+                fclose(csv);
                 break;
             }
             lastack = ender*DATA_SIZE; // after checking all the packets, sends an ACK for the missing packet (safety net and to account for large window sizes)
