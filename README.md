@@ -32,18 +32,19 @@
 * Appended the **CWND.csv** file whenever the window was about to change and after it changes
 * On the receiver, appended a CSV file with the (time, packet size, packet received) whenever a packet was received into **TPT.csv**
 * using the **plot.py**, use
-```
-python3 plot.py -d <DIR> -n TPT.csv -tr <TRACE>
-```
     * **\<DIR>** is the name of the Directory, use . or .. for current and the parent Directory respectively
     * **\<TRACE>** is the name of the trace file
     * implemented the offset in the trace file, there is a constant in the **line 70 of plot.py** code that seems arbitrary and might need adjusting for the first run (but it seems like it works afterwards for the next ones once it is set the first time)
     * if the time taken to send the file is bigger than the trace file loop, the value will keep looping over the previously set values
+```
+python3 plot.py -d <DIR> -n TPT.csv -tr <TRACE>
+```
+
 * using the **plotW.py**, use
+    * **\<DIR>** is the name of the Directory, use . or .. for current and the parent Directory respectively
 ```
 python3 plotW.py -d <DIR> -n CWND.csv
 ```
-    * **\<DIR>** is the name of the Directory, use . or .. for current and the parent Directory respectively
 
 
 ## Using the code
