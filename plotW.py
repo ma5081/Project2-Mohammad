@@ -44,7 +44,7 @@ for time in traceDL:
 print (timeDL)
 print (windowDL)
 
-plt.plot(timeDL, windowDL, lw=2, color='r')
+plt.plot(timeDL, windowDL, lw=2, color='g')
 
 plt.ylabel("Window Size (Packets)")
 plt.xlabel("Time (s)")

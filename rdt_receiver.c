@@ -24,6 +24,8 @@ tcp_packet *recvpkt;
 tcp_packet *sndpkt;
 int rsize=0; // amount of packets to get
 short* buffered; // an array-type system of bools to check the packets that are buffered
+int dupes=0;
+int prevack;
 FILE *csv;
 
 void csvTime(int dSize, int sNo)
@@ -43,6 +45,7 @@ int main(int argc, char **argv) {
     FILE *fp;
     char buffer[MSS_SIZE];
     int lastack = 0;
+    int prevack = 0;
 
     /*
      * check command line arguments
@@ -145,6 +148,7 @@ int main(int argc, char **argv) {
         assert(get_data_size(recvpkt) <= DATA_SIZE);
         csvTime(recvpkt->hdr.data_size,recvpkt->hdr.seqno);
         sndpkt = make_packet(0);
+        prevack = lastack;
         if ((recvpkt->hdr.data_size == 0 && recvpkt->hdr.seqno >= 0)||rsize<=0) // if received packet is empty and it is not the handshake or if the file to be received is empty
         {
             int ender = 0;
@@ -180,28 +184,38 @@ int main(int argc, char **argv) {
         }
         else
         {
-            fseek(fp, recvpkt->hdr.seqno, SEEK_SET);
-            fwrite(recvpkt->data, 1, recvpkt->hdr.data_size, fp);
             int rpack = recvpkt->hdr.seqno/DATA_SIZE;
             sndpkt->hdr.seqno = recvpkt->hdr.seqno;
-            *(buffered+rpack) = 1; // set the packet as buffered
-            if (lastack == recvpkt->hdr.seqno) // if the packet is the packet that was expected
+            if(!*(buffered+rpack)) // if not already buffered
             {
-                for(int i=rpack; i<rsize; i++) // check the next missing piece
+                fseek(fp, recvpkt->hdr.seqno, SEEK_SET);
+                fwrite(recvpkt->data, 1, recvpkt->hdr.data_size, fp);
+                *(buffered+rpack) = 1; // set the packet as buffered
+                if (lastack == recvpkt->hdr.seqno) // if the packet is the packet that was expected
                 {
-                    if(!*(buffered+i)){rpack = i; break;}
-                    rpack = rsize; // set to rsize unless breaking the loop with the if statement
+                    for(int i=rpack; i<rsize; i++) // check the next missing piece
+                    {
+                        if(!*(buffered+i)){rpack = i; break;}
+                        rpack = rsize; // set to rsize unless breaking the loop with the if statement
+                    }
+                    lastack = rpack*DATA_SIZE;
                 }
-                lastack = rpack*DATA_SIZE;
             }
         }
-        sndpkt->hdr.ackno = lastack;
-        sndpkt->hdr.ctr_flags = ACK;
-        printf("%s: %d\n", "sent the following ACK", lastack);
-        if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0,
-                (struct sockaddr *) &clientaddr, clientlen) < 0)
+        if(prevack == lastack)
+            dupes++;
+        else
+            dupes = 0;
+        if(dupes <= 5)
         {
-            error("ERROR in sendto");
+            sndpkt->hdr.ackno = lastack;
+            sndpkt->hdr.ctr_flags = ACK;
+            printf("%s: %d\n", "sent the following ACK", lastack);
+            if (sendto(sockfd, sndpkt, TCP_HDR_SIZE, 0,
+                    (struct sockaddr *) &clientaddr, clientlen) < 0)
+            {
+                error("ERROR in sendto");
+            }
         }
     }
     return 0;

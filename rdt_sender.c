@@ -141,11 +141,11 @@ void resend_packets(int sig)
         lastav = rsend+window_size;
         csvTime();
         send_packets(rsend, lastav);
-        VLOG(INFO, "Timeout happened"); 
+        VLOG(INFO, "Timeout happened");
     }
     else // non-timeout = 3 dupe ACKs
     {
-        window_size /= 2; // fast recovery
+        window_size = window_size/2>2?window_size/2:2; // fast recovery
         lastav = rsend+window_size;
         csvTime();
         send_packets(rsend, rsend+1);
@@ -264,7 +264,10 @@ int main (int argc, char **argv)
             }
         }
         if(send_base == recvpkt->hdr.ackno) // if dupe ACK
+        {
             dupe++;
+            printf("%d: %d\n", dupe, rsend);
+        }
         else
             dupe = 0;
         send_base = recvpkt->hdr.ackno;
@@ -287,6 +290,7 @@ int main (int argc, char **argv)
             end_packets();
             return 0;
         }
+        printf("Window Size: %d\n", window_size);
     }
     return 0;
 }

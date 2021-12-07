@@ -30,12 +30,20 @@ ax = plt.gca()
 f1 = open (args.trace,"r")
 BW = []
 nextTime = 1000
-cnt = 0
+cnt = 1
+lastTime = 0
+firstTime = f1.readline().strip()
+if not firstTime:
+    firstTime = 0
+firstTime = float(firstTime)
+lastTime = float(lastTime)
 for line in f1:
-    if int(line.strip().split(",")[0]) > nextTime:
+    lastTime = float(line.strip())
+    if int(lastTime) > nextTime:
         BW.append(cnt*1492*8)
         cnt = 0
         nextTime+=1000
+
     else:
         cnt+=1
 f1.close()
@@ -54,14 +62,36 @@ bytes = int(tmp[1])
 startTime = float(tmp[0])
 stime=float(startTime)
 
+firstTime /= 1000
+lastTime /= 1000
+tLoop = (lastTime-firstTime)
+if tLoop:
+    utime = (stime-firstTime)
+    utime += 165.0 # this constant might need adjustment, it is the number that synced the graphs for me
+    utime = utime%tLoop
+else:
+    tLoop = 1000000
+    utime = 0
+looper = 0
+for i in range(0,int(utime)):
+    timeDL.append(float(i))
+    throughputDL.append(0)
 for time in traceDL:
     if (float(time.strip().split(",")[0]) - float(startTime)) <= 1.0:
         bytes += int(time.strip().split(",")[1])
     else:
-        throughputDL.append(bytes*8/1000000.0)
-        timeDL.append(float(startTime)-stime)
+        timeP = (float(startTime)-stime+utime)
+        if timeP < tLoop:
+            timeDL.append(timeP)
+            throughputDL.append(bytes*8/1000000.0)
+        else:
+            timeDL[looper] = int(timeP%tLoop)
+            throughputDL[looper] = bytes*8/1000000.0
+            looper = int(looper+1%tLoop)
+
         bytes = int(time.strip().split(",")[1])
         startTime += 1.0
+
 
 print (timeDL)
 print (throughputDL)
